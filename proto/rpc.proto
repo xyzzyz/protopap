@@ -1,0 +1,15 @@
+package Network.RPC.Protopap.Proto;
+
+message RPCRequest {
+  optional string method = 1;
+}
+
+message RPCResponse {
+  enum Status {
+    OK = 1;
+    RPC_ERROR = 2;
+    APP_ERROR = 3;
+  }
+  optional Status status = 1;
+  optional string status_info = 2;
+}
