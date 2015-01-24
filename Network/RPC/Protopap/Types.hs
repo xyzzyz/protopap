@@ -1,7 +1,13 @@
-module Network.RPC.Protopap.Types(RPCAppRequest, RPCAppResponse) where
+{-# LANGUAGE ConstraintKinds #-}
+
+
+module Network.RPC.Protopap.Types(RPCAppRequest, RPCAppResponse,
+                                  RPCCallError(..)) where
 
 import Text.ProtocolBuffers.Reflections
 import Text.ProtocolBuffers.WireMessage
 
-class (ReflectDescriptor req, Wire req) => RPCAppRequest req
-class (ReflectDescriptor res, Wire res) => RPCAppResponse res
+type RPCAppRequest req = (ReflectDescriptor req, Wire req) 
+type RPCAppResponse res = (ReflectDescriptor res, Wire res) 
+
+data RPCCallError = RPCError String | AppError String

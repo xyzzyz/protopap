@@ -1,3 +1,6 @@
+{-# LANGUAGE ConstraintKinds #-}
+
+
 module Network.RPC.Protopap.Client(rpcCall) where
 
 import Network.RPC.Protopap.Types
@@ -17,15 +20,12 @@ import Text.ProtocolBuffers.WireMessage
 class MonadIO m => ZMQRPCClient m where
   withConnectedSocket :: (Socket Req -> m a) -> m a
 
-data RPCCallError = RPCError String
-                  | AppError String
-
 rpcCall :: (RPCAppRequest req, RPCAppResponse res, ZMQRPCClient m) =>
            String -> req -> m (Either RPCCallError res)
-rpcCall method appReq = do
+rpcCall method appRequest = do
   withConnectedSocket $ \sock -> do
     let req = RPCRequest { method = Just (uFromString method) }
-    liftIO $ send' sock [] (runPut $ messagePutM req >> messagePutM appReq)
+    liftIO $ send' sock [] (runPut $ messagePutM req >> messagePutM appRequest)
     bs <- liftIO (receive sock)
     case messageGet . fromStrict $ bs of
       Left error_message ->
