@@ -18,6 +18,8 @@ cabal-version:       >=1.10
 library
   exposed-modules: Network.RPC.Protopap.Client,
                    Network.RPC.Protopap.Server,
+                   Network.RPC.Protopap.Publisher,
+                   Network.RPC.Protopap.Subscriber,
                    Network.RPC.Protopap.Types
   -- other-modules:       
   -- other-extensions:    

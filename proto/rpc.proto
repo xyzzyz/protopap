@@ -13,3 +13,7 @@ message RPCResponse {
   optional Status status = 1;
   optional string status_info = 2;
 }
+
+message RPCPubSub {
+  optional string message_type = 1;
+}

@@ -1,6 +1,5 @@
 {-# LANGUAGE ConstraintKinds #-}
 
-
 module Network.RPC.Protopap.Client(rpcCall) where
 
 import Network.RPC.Protopap.Types
@@ -22,16 +21,15 @@ class MonadIO m => ZMQRPCClient m where
 
 rpcCall :: (RPCAppRequest req, RPCAppResponse res, ZMQRPCClient m) =>
            String -> req -> m (Either RPCCallError res)
-rpcCall method appRequest = do
-  withConnectedSocket $ \sock -> do
-    let req = RPCRequest { method = Just (uFromString method) }
-    liftIO $ send' sock [] (runPut $ messagePutM req >> messagePutM appRequest)
-    bs <- liftIO (receive sock)
-    case messageGet . fromStrict $ bs of
-      Left error_message ->
-        return . Left . RPCError $ "Failed to parse proto response: " ++ error_message
-      Right (rpcResponse, extraData) ->
-        return $ handleRPCResponse rpcResponse extraData
+rpcCall method appRequest = withConnectedSocket $ \sock -> do
+  let req = RPCRequest { method = Just (uFromString method) }
+  liftIO $ send' sock [] (runPut $ messagePutM req >> messagePutM appRequest)
+  bs <- liftIO (receive sock)
+  case messageGet . fromStrict $ bs of
+    Left error_message ->
+      return . Left . RPCError $ "Failed to parse proto response: " ++ error_message
+    Right (rpcResponse, extraData) ->
+      return $ handleRPCResponse rpcResponse extraData
 
 handleRPCResponse :: RPCAppResponse res => RPCResponse -> ByteString -> Either RPCCallError res
 handleRPCResponse rpcResponse extraData =

@@ -24,7 +24,6 @@ data RPCHandler m = forall req res. (RPCAppRequest req, RPCAppResponse res)
 type RawRPCHandler m = ByteString -> m (Either RPCCallError Put)
 
 data RPCServiceDefinition m = RPCServiceDefinition {
-  _name :: String,
   _methods :: M.Map String (RawRPCHandler m)
   }
 
@@ -34,10 +33,9 @@ class MonadIO m => ZMQRPCServer m where
   withBoundSocket :: (Socket Rep -> m a) -> m a
 
 makeServiceDefinition :: ZMQRPCServer m =>
-                         String -> [(String, RPCHandler m)] -> RPCServiceDefinition m
-makeServiceDefinition name methods =
-  RPCServiceDefinition name $
-  M.fromList (mapped._2 %~ makeRawHandler $ methods)
+                         [(String, RPCHandler m)] -> RPCServiceDefinition m
+makeServiceDefinition methods =
+  RPCServiceDefinition $ M.fromList (mapped._2 %~ makeRawHandler $ methods)
 
 makeRawHandler :: ZMQRPCServer m => RPCHandler m -> RawRPCHandler m
 makeRawHandler (RPCHandler f) bs = do
