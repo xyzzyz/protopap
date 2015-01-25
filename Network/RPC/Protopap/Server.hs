@@ -29,29 +29,25 @@ data RPCServiceDefinition m = RPCServiceDefinition {
 
 $(makeLenses ''RPCServiceDefinition)
 
-class MonadIO m => ZMQRPCServer m where
-  withBoundSocket :: (Socket Rep -> m a) -> m a
-
-makeServiceDefinition :: ZMQRPCServer m =>
-                         [(String, RPCHandler m)] -> RPCServiceDefinition m
+makeServiceDefinition :: Monad m => [(String, RPCHandler m)] -> RPCServiceDefinition m
 makeServiceDefinition methods =
   RPCServiceDefinition $ M.fromList (mapped._2 %~ makeRawHandler $ methods)
 
-makeRawHandler :: ZMQRPCServer m => RPCHandler m -> RawRPCHandler m
+makeRawHandler :: Monad m => RPCHandler m -> RawRPCHandler m
 makeRawHandler (RPCHandler f) bs = do
-  case messageGet bs of
-    Left error_message ->
-      return . Left . RPCError $ "Failed to parse app request: " ++ error_message
+  case messageWithLengthGet bs of
+    Left errorMessage ->
+      return . Left . RPCError $ "Failed to parse app request: " ++ errorMessage
     Right (appRequest, extra) -> do
       res <- f appRequest
       case res of
         Left err -> return . Left . AppError $ err
-        Right appResponse -> return . Right . messagePutM $ appResponse
+        Right appResponse -> return . Right . messageWithLengthPutM $ appResponse
 
 
-requestParseError = RPCResponse {
+requestParseError message = RPCResponse {
   status = Just RPCResponse.Status.RPC_ERROR,
-  status_info = Just . uFromString $ "Couldn't parse RPC request proto" }
+  status_info = Just . uFromString $ "Couldn't parse RPC request proto: " ++ message }
 
 noMethodProviderError = RPCResponse {
   status = Just RPCResponse.Status.RPC_ERROR,
@@ -70,18 +66,17 @@ okResponse = RPCResponse {
   status_info = Nothing
   }
 
-sendRPCErrorResponse :: ZMQRPCServer m => Socket Rep -> RPCResponse -> m ()
+sendRPCErrorResponse :: MonadIO m => Socket Rep -> RPCResponse -> m ()
 sendRPCErrorResponse sock res = liftIO $ send' sock [] (messagePut res)
 
-handleRPCCall :: ZMQRPCServer m => RPCServiceDefinition m -> m ()
-handleRPCCall serviceDef = do
-  withBoundSocket $ \sock -> do
-    bs <- liftIO (receive sock)
-    case messageGet . BS.fromStrict $ bs of
-      Left error_message ->
-        sendRPCErrorResponse sock requestParseError
-      Right (rpcRequest, extraData) ->
-        handleRPCRequest serviceDef sock rpcRequest extraData
+handleRPCCall :: MonadIO m => RPCServiceDefinition m -> Socket Rep -> m ()
+handleRPCCall serviceDef sock = do
+  bs <- liftIO (receive sock)
+  case messageWithLengthGet . BS.fromStrict $ bs of
+    Left errorMessage ->
+      sendRPCErrorResponse sock (requestParseError errorMessage)
+    Right (rpcRequest, extraData) ->
+      handleRPCRequest serviceDef sock rpcRequest extraData
 
 handleRPCRequest serviceDef sock request appRequestData =
   case getHandlerFunction request of
@@ -92,7 +87,7 @@ handleRPCRequest serviceDef sock request appRequestData =
         Left (AppError err) -> sendRPCErrorResponse sock (appError err)
         Right appResponse ->
           liftIO . send' sock [] . runPut $ (
-            messagePutM okResponse >> appResponse)
+            messageWithLengthPutM okResponse >> appResponse)
   where getHandlerFunction request = do
           name <- maybe (Left noMethodProviderError) (Right . uToString)
                   (method request)

@@ -1,6 +1,7 @@
 {-# LANGUAGE ConstraintKinds #-}
 
-module Network.RPC.Protopap.Client(rpcCall) where
+module Network.RPC.Protopap.Client(ZMQRPCClient(withConnectedSocket),
+                                   rpcCall) where
 
 import Network.RPC.Protopap.Types
 import Network.RPC.Protopap.Proto.RPCRequest as RPCRequest
@@ -23,9 +24,10 @@ rpcCall :: (RPCAppRequest req, RPCAppResponse res, ZMQRPCClient m) =>
            String -> req -> m (Either RPCCallError res)
 rpcCall method appRequest = withConnectedSocket $ \sock -> do
   let req = RPCRequest { method = Just (uFromString method) }
-  liftIO $ send' sock [] (runPut $ messagePutM req >> messagePutM appRequest)
+  liftIO $ send' sock [] (
+    runPut $ messageWithLengthPutM req >> messageWithLengthPutM appRequest)
   bs <- liftIO (receive sock)
-  case messageGet . fromStrict $ bs of
+  case messageWithLengthGet . fromStrict $ bs of
     Left error_message ->
       return . Left . RPCError $ "Failed to parse proto response: " ++ error_message
     Right (rpcResponse, extraData) ->
@@ -47,7 +49,7 @@ handleRPCResponse rpcResponse extraData =
 
 readAppResponse :: RPCAppResponse res => ByteString -> Either RPCCallError res
 readAppResponse extraData = do
-  case messageGet extraData of
+  case messageWithLengthGet extraData of
     Left error_message ->
       Left . RPCError $ "Failed to parse app response: " ++ error_message
     Right (appResponse, x) | not (ByteString.null x) ->
