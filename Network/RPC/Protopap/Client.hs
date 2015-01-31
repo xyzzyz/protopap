@@ -1,12 +1,14 @@
-{-# LANGUAGE ConstraintKinds #-}
+{-# LANGUAGE ConstraintKinds, FlexibleContexts #-}
 
-module Network.RPC.Protopap.Client(ZMQRPCClient(withConnectedSocket),
-                                   rpcCall) where
+module Network.RPC.Protopap.Client(makeRPCCall, rpcCall) where
 
 import Network.RPC.Protopap.Types
 import Network.RPC.Protopap.Proto.RPCRequest as RPCRequest
 import Network.RPC.Protopap.Proto.RPCResponse as RPCResponse
 import Network.RPC.Protopap.Proto.RPCResponse.Status as RPCResponse.Status
+
+import Control.Exception.Lifted
+import Control.Monad.Trans.Control
 
 import Data.Maybe
 import Data.ByteString.Lazy
@@ -17,12 +19,22 @@ import System.ZMQ4
 import Text.ProtocolBuffers.Basic
 import Text.ProtocolBuffers.WireMessage
 
-class MonadIO m => ZMQRPCClient m where
-  withConnectedSocket :: (Socket Req -> m a) -> m a
+makeRPCCall :: (RPCAppRequest req, RPCAppResponse res, MonadIO m, MonadBaseControl IO m) =>
+               String -> String -> req -> m (Either RPCCallError res)
+makeRPCCall endpoint method appRequest = do
+  bracket (create endpoint) destroy $ \(_, sock) -> rpcCall sock method appRequest
+    where create endpoint = liftIO $ do
+            ctx <- context
+            sock <- socket ctx Req
+            connect sock endpoint
+            return (ctx, sock)
+          destroy (ctx, sock) = liftIO $ do
+            close sock
+            term ctx
 
-rpcCall :: (RPCAppRequest req, RPCAppResponse res, ZMQRPCClient m) =>
-           String -> req -> m (Either RPCCallError res)
-rpcCall method appRequest = withConnectedSocket $ \sock -> do
+rpcCall :: (RPCAppRequest req, RPCAppResponse res, MonadIO m) =>
+           Socket Req -> String -> req -> m (Either RPCCallError res)
+rpcCall sock method appRequest = do
   let req = RPCRequest { method = Just (uFromString method) }
   liftIO $ send' sock [] (
     runPut $ messageWithLengthPutM req >> messageWithLengthPutM appRequest)
@@ -33,7 +45,8 @@ rpcCall method appRequest = withConnectedSocket $ \sock -> do
     Right (rpcResponse, extraData) ->
       return $ handleRPCResponse rpcResponse extraData
 
-handleRPCResponse :: RPCAppResponse res => RPCResponse -> ByteString -> Either RPCCallError res
+handleRPCResponse :: RPCAppResponse res =>
+                     RPCResponse -> ByteString -> Either RPCCallError res
 handleRPCResponse rpcResponse extraData =
   case RPCResponse.status rpcResponse of
     Nothing ->
